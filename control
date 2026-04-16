@@ -1,0 +1,408 @@
+#include <WiFiS3.h>
+#include <Servo.h>
+
+// ── AP CREDENTIALS ────────────────────────────────────────────────────────────
+const char ssid[] = "ROV_Control";
+const char pass[] = "12345678";
+
+// ── BATTERY VOLTAGE DIVIDER ───────────────────────────────────────────────────
+// Wire a voltage divider from battery+ to A0:
+//   Batt+ ── R1(30kΩ) ── A0 ── R2(10kΩ) ── GND
+// This scales up to ~20V safely to 0-5V on A0.
+// For a 3S LiPo (max 12.6V) or 4S (max 16.8V) this works fine.
+// Adjust BATT_RATIO if you use different resistors: ratio = (R1+R2)/R2
+#define BATT_PIN    A0
+#define BATT_RATIO  4.0f   // (30k+10k)/10k
+
+WiFiServer server(80);
+
+Servo escR;
+Servo escL;
+
+int targetR = 1500;
+int targetL = 1500;
+
+// ── BATTERY READ ──────────────────────────────────────────────────────────────
+float readBattery() {
+  int raw = analogRead(BATT_PIN);
+  return (raw / 1023.0f) * 5.0f * BATT_RATIO;
+}
+
+// ── SETUP ─────────────────────────────────────────────────────────────────────
+void setup() {
+  Serial.begin(9600);
+
+  escR.attach(9);
+  escL.attach(10);
+  escR.writeMicroseconds(1500);
+  escL.writeMicroseconds(1500);
+  delay(3000);
+
+  WiFi.beginAP(ssid, pass);
+  Serial.println(F("AP ready — SSID: ROV_Control"));
+  Serial.println(F("Open: http://192.168.4.1"));
+
+  server.begin();
+}
+
+// ── LOOP ──────────────────────────────────────────────────────────────────────
+void loop() {
+  escR.writeMicroseconds(targetR);
+  escL.writeMicroseconds(targetL);
+
+  WiFiClient client = server.available();
+  if (!client) return;
+
+  String req = client.readStringUntil('\r');
+  client.flush();
+
+  // ── COMMAND PARSING ─────────────────────────────────────────────────────────
+  if (req.indexOf("/cmd?") != -1) {
+    int rIdx = req.indexOf("R=");
+    int lIdx = req.indexOf("L=");
+    if (rIdx != -1) targetR = constrain(req.substring(rIdx + 2).toInt(), 1100, 1900);
+    if (lIdx != -1) targetL = constrain(req.substring(lIdx + 2).toInt(), 1100, 1900);
+  }
+  if (req.indexOf("/stop") != -1) { targetR = 1500; targetL = 1500; }
+
+  // ── RESPONSE HEADERS ────────────────────────────────────────────────────────
+  client.println(F("HTTP/1.1 200 OK"));
+
+  // ── /ping — heartbeat ────────────────────────────────────────────────────────
+  if (req.indexOf("/ping") != -1) {
+    client.println(F("Content-type:text/plain\n"));
+    client.println(F("pong"));
+    client.stop(); return;
+  }
+
+  // ── /status — battery JSON ───────────────────────────────────────────────────
+  if (req.indexOf("/status") != -1) {
+    client.println(F("Content-type:application/json"));
+    client.println(F("Access-Control-Allow-Origin:*\n"));
+    client.print(F("{\"battV\":"));
+    client.print(readBattery(), 2);
+    client.print(F(",\"R\":"));
+    client.print(targetR);
+    client.print(F(",\"L\":"));
+    client.print(targetL);
+    client.println(F("}"));
+    client.stop(); return;
+  }
+
+  // ── API calls — early exit ───────────────────────────────────────────────────
+  if (req.indexOf("/cmd?") != -1 || req.indexOf("/stop") != -1) {
+    client.println(F("Content-type:text/plain\n"));
+    client.println(F("OK"));
+    client.stop(); return;
+  }
+
+  // ── SERVE HTML PAGE ──────────────────────────────────────────────────────────
+  client.println(F("Content-type:text/html"));
+  client.println();
+
+  // HEAD
+  client.println(F("<!DOCTYPE html><html lang='en'><head>"));
+  client.println(F("<meta charset='UTF-8'>"));
+  client.println(F("<meta name='viewport' content='width=device-width,initial-scale=1'>"));
+  client.println(F("<title>KAAX ROV</title>"));
+
+  // ── CSS ──────────────────────────────────────────────────────────────────────
+  client.println(F("<style>"));
+  client.println(F(":root{--teal:#00b4d8;--teal-dark:#0077b6;--teal-dim:#023e58;"));
+  client.println(F("  --bg:#020d12;--bg2:#061a24;--bg3:#0a2535;"));
+  client.println(F("  --text:#caf0f8;--muted:#4a7f95;--red:#e63946;--amber:#f4a261;}"));
+  client.println(F("*{margin:0;padding:0;box-sizing:border-box}"));
+  client.println(F("body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;min-height:100vh;display:flex;flex-direction:column;}"));
+
+  // Header
+  client.println(F(".hdr{background:var(--bg2);border-bottom:1px solid var(--teal-dim);"));
+  client.println(F("  padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}"));
+  client.println(F(".hdr-title{display:flex;flex-direction:column;}"));
+  client.println(F(".hdr-title h1{font-size:1.1em;letter-spacing:.3em;color:var(--teal);text-shadow:0 0 10px var(--teal);}"));
+  client.println(F(".hdr-title span{font-size:.55em;color:var(--muted);letter-spacing:.25em;}"));
+  client.println(F(".hdr-right{display:flex;align-items:center;gap:16px;}"));
+
+  // Connection pill
+  client.println(F(".conn{display:flex;align-items:center;gap:6px;font-size:.7em;letter-spacing:.1em;"));
+  client.println(F("  border:1px solid var(--teal-dim);padding:4px 10px;border-radius:20px;background:var(--bg3);}"));
+  client.println(F(".dot{width:8px;height:8px;border-radius:50%;background:var(--muted);}"));
+  client.println(F(".dot.online{background:#4cc9f0;box-shadow:0 0 8px #4cc9f0;animation:pulse 2s infinite;}"));
+  client.println(F(".dot.offline{background:var(--red);box-shadow:0 0 8px var(--red);}"));
+  client.println(F("@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}"));
+
+  // Battery
+  client.println(F(".batt{font-size:.7em;color:var(--teal);letter-spacing:.1em;}"));
+  client.println(F(".batt.low{color:var(--red)}.batt.mid{color:var(--amber)}"));
+
+  // Nav tabs
+  client.println(F(".nav{display:flex;background:var(--bg2);border-bottom:1px solid var(--teal-dim);}"));
+  client.println(F(".nav button{flex:1;padding:11px;background:none;border:none;border-bottom:2px solid transparent;"));
+  client.println(F("  color:var(--muted);font-family:inherit;font-size:.75em;letter-spacing:.2em;cursor:pointer;transition:all .15s;}"));
+  client.println(F(".nav button.active{color:var(--teal);border-bottom-color:var(--teal);text-shadow:0 0 8px var(--teal);}"));
+  client.println(F(".nav button:hover:not(.active){color:var(--text);}"));
+
+  // Tab content
+  client.println(F(".tab{display:none;flex:1;padding:20px 16px;flex-direction:column;align-items:center;}"));
+  client.println(F(".tab.show{display:flex;}"));
+  client.println(F(".section-title{font-size:.65em;color:var(--muted);letter-spacing:.25em;margin-bottom:16px;align-self:flex-start;}"));
+
+  // Status bar inside control tab
+  client.println(F(".status{display:flex;gap:16px;margin-bottom:20px;border:1px solid var(--teal-dim);"));
+  client.println(F("  padding:8px 16px;background:var(--bg3);width:100%;max-width:340px;justify-content:space-around;}"));
+  client.println(F(".stat{text-align:center;}"));
+  client.println(F(".stat-l{font-size:.55em;color:var(--muted);letter-spacing:.12em;}"));
+  client.println(F(".stat-v{font-size:1em;color:var(--teal);text-shadow:0 0 6px var(--teal);}"));
+  client.println(F(".stat-v.fwd{color:#4cc9f0}.stat-v.bwd{color:var(--amber)}.stat-v.turn{color:#c77dff}.stat-v.idle{color:var(--muted)}"));
+
+  // D-pad
+  client.println(F(".dpad{display:grid;grid-template-columns:repeat(3,70px);grid-template-rows:repeat(3,70px);gap:5px;margin-bottom:20px;}"));
+  client.println(F(".db{background:var(--bg3);border:1px solid var(--teal-dim);color:var(--teal);font-size:1.7em;"));
+  client.println(F("  cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:6px;"));
+  client.println(F("  transition:all .08s;user-select:none;-webkit-user-select:none;}"));
+  client.println(F(".db:active,.db.on{background:var(--teal-dim);border-color:var(--teal);"));
+  client.println(F("  box-shadow:0 0 18px var(--teal),inset 0 0 10px rgba(0,180,216,.3);color:#fff;}"));
+  client.println(F(".dc{background:var(--bg2);border:1px solid #0a2535;border-radius:6px;}"));
+  client.println(F(".de{background:transparent;border:none;}"));
+
+  // Sliders
+  client.println(F(".sliders{width:100%;max-width:320px;margin-bottom:18px;}"));
+  client.println(F(".sr{display:flex;align-items:center;gap:10px;margin-bottom:10px;}"));
+  client.println(F(".sr label{width:52px;font-size:.68em;color:var(--muted);letter-spacing:.1em;}"));
+  client.println(F("input[type=range]{flex:1;accent-color:var(--teal);cursor:pointer;}"));
+  client.println(F(".sv{width:36px;font-size:.72em;text-align:right;color:var(--teal);}"));
+
+  // Stop button
+  client.println(F(".stop{background:#1a0005;border:2px solid var(--red);color:var(--red);"));
+  client.println(F("  font-size:.9em;letter-spacing:.25em;padding:13px 40px;cursor:pointer;"));
+  client.println(F("  font-family:inherit;transition:all .15s;}"));
+  client.println(F(".stop:hover{background:var(--red);color:#fff;box-shadow:0 0 22px var(--red);}"));
+  client.println(F(".hint{margin-top:12px;font-size:.55em;color:var(--teal-dim);letter-spacing:.1em;text-align:center;}"));
+
+  // Logs tab
+  client.println(F(".log-list{width:100%;max-width:500px;border:1px solid var(--teal-dim);background:var(--bg3);max-height:55vh;overflow-y:auto;}"));
+  client.println(F(".log-entry{display:flex;gap:12px;padding:7px 12px;border-bottom:1px solid var(--bg2);font-size:.7em;}"));
+  client.println(F(".log-entry:last-child{border-bottom:none;}"));
+  client.println(F(".log-time{color:var(--muted);white-space:nowrap;}"));
+  client.println(F(".log-msg{color:var(--text);}"));
+  client.println(F(".log-msg.conn{color:#4cc9f0}.log-msg.disc{color:var(--red)}.log-msg.cmd{color:var(--teal)}.log-msg.stop{color:var(--amber)}"));
+  client.println(F(".log-clear{margin-top:10px;background:none;border:1px solid var(--teal-dim);color:var(--muted);"));
+  client.println(F("  font-family:inherit;font-size:.65em;padding:5px 14px;cursor:pointer;letter-spacing:.1em;}"));
+  client.println(F(".log-clear:hover{border-color:var(--teal);color:var(--teal);}"));
+
+  // Environment tab
+  client.println(F(".env-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;width:100%;max-width:440px;margin-bottom:16px;}"));
+  client.println(F(".env-card{background:var(--bg3);border:1px solid var(--teal-dim);padding:12px 14px;border-radius:4px;}"));
+  client.println(F(".env-label{font-size:.58em;color:var(--muted);letter-spacing:.15em;margin-bottom:4px;}"));
+  client.println(F(".env-val{font-size:1.1em;color:var(--teal);}"));
+  client.println(F(".env-unit{font-size:.6em;color:var(--muted);}"));
+  client.println(F(".sarg-banner{width:100%;max-width:440px;border:1px solid var(--teal-dim);background:var(--bg3);"));
+  client.println(F("  padding:14px;margin-bottom:14px;border-radius:4px;}"));
+  client.println(F(".sarg-title{font-size:.6em;color:var(--muted);letter-spacing:.2em;margin-bottom:6px;}"));
+  client.println(F(".sarg-status{font-size:1em;font-weight:bold;letter-spacing:.1em;}"));
+  client.println(F(".sarg-status.low{color:#4cc9f0}.sarg-status.mod{color:var(--amber)}.sarg-status.high{color:var(--red)}"));
+  client.println(F(".sarg-note{font-size:.58em;color:var(--muted);margin-top:6px;line-height:1.5;}"));
+  client.println(F(".env-loc{font-size:.6em;color:var(--muted);letter-spacing:.1em;margin-bottom:14px;align-self:flex-start;}"));
+  client.println(F(".env-src{font-size:.55em;color:var(--teal-dim);margin-top:10px;text-align:center;}"));
+  client.println(F(".env-src a{color:var(--muted);text-decoration:none;}"));
+  client.println(F(".loading{font-size:.75em;color:var(--muted);letter-spacing:.15em;animation:pulse 1.5s infinite;}"));
+  client.println(F("</style></head><body>"));
+
+  // ── HEADER ───────────────────────────────────────────────────────────────────
+  client.println(F("<div class='hdr'>"));
+  client.println(F("  <div class='hdr-title'><h1>ROV CONTROL PANEL</h1><span>KAAX &bull; UNDERWATER SYSTEM</span></div>"));
+  client.println(F("  <div class='hdr-right'>"));
+  client.println(F("    <div class='batt' id='batt'>BATT &mdash;</div>"));
+  client.println(F("    <div class='conn'><div class='dot' id='dot'></div><span id='conn-lbl'>CONNECTING</span></div>"));
+  client.println(F("  </div>"));
+  client.println(F("</div>"));
+
+  // ── NAV ───────────────────────────────────────────────────────────────────────
+  client.println(F("<div class='nav'>"));
+  client.println(F("  <button class='active' onclick='showTab(\"control\",this)'>CONTROL</button>"));
+  client.println(F("  <button onclick='showTab(\"logs\",this)'>LOGS</button>"));
+  client.println(F("  <button onclick='showTab(\"env\",this)'>ENVIRONMENT</button>"));
+  client.println(F("</div>"));
+
+  // ── TAB: CONTROL ─────────────────────────────────────────────────────────────
+  client.println(F("<div class='tab show' id='tab-control'>"));
+  client.println(F("  <div class='section-title'>THRUSTER CONTROL</div>"));
+  client.println(F("  <div class='status'>"));
+  client.println(F("    <div class='stat'><div class='stat-l'>R THRUST</div><div class='stat-v idle' id='rv'>1500</div></div>"));
+  client.println(F("    <div class='stat'><div class='stat-l'>L THRUST</div><div class='stat-v idle' id='lv'>1500</div></div>"));
+  client.println(F("    <div class='stat'><div class='stat-l'>STATE</div><div class='stat-v idle' id='sv'>IDLE</div></div>"));
+  client.println(F("  </div>"));
+  client.println(F("  <div class='dpad'>"));
+  client.println(F("    <div class='de'></div>"));
+  client.println(F("    <button class='db' id='bu' onmousedown='pk(\"ArrowUp\")' onmouseup='rk(\"ArrowUp\")' onmouseleave='rk(\"ArrowUp\")' ontouchstart='evt(event,\"ArrowUp\",1)' ontouchend='evt(event,\"ArrowUp\",0)'>&#8679;</button>"));
+  client.println(F("    <div class='de'></div>"));
+  client.println(F("    <button class='db' id='bl' onmousedown='pk(\"ArrowLeft\")' onmouseup='rk(\"ArrowLeft\")' onmouseleave='rk(\"ArrowLeft\")' ontouchstart='evt(event,\"ArrowLeft\",1)' ontouchend='evt(event,\"ArrowLeft\",0)'>&#8678;</button>"));
+  client.println(F("    <div class='dc'></div>"));
+  client.println(F("    <button class='db' id='br' onmousedown='pk(\"ArrowRight\")' onmouseup='rk(\"ArrowRight\")' onmouseleave='rk(\"ArrowRight\")' ontouchstart='evt(event,\"ArrowRight\",1)' ontouchend='evt(event,\"ArrowRight\",0)'>&#8680;</button>"));
+  client.println(F("    <div class='de'></div>"));
+  client.println(F("    <button class='db' id='bd' onmousedown='pk(\"ArrowDown\")' onmouseup='rk(\"ArrowDown\")' onmouseleave='rk(\"ArrowDown\")' ontouchstart='evt(event,\"ArrowDown\",1)' ontouchend='evt(event,\"ArrowDown\",0)'>&#8681;</button>"));
+  client.println(F("    <div class='de'></div>"));
+  client.println(F("  </div>"));
+  client.println(F("  <div class='sliders'>"));
+  client.println(F("    <div class='sr'><label>RIGHT</label><input type='range' min='1100' max='1900' value='1500' id='slR' oninput='onSlide(\"R\",this.value)'><span class='sv' id='srV'>1500</span></div>"));
+  client.println(F("    <div class='sr'><label>LEFT</label><input type='range' min='1100' max='1900' value='1500' id='slL' oninput='onSlide(\"L\",this.value)'><span class='sv' id='slV'>1500</span></div>"));
+  client.println(F("  </div>"));
+  client.println(F("  <button class='stop' onclick='eStop()'>&#9632; EMERGENCY STOP</button>"));
+  client.println(F("  <div class='hint'>ARROW KEYS OR D-PAD &bull; HOLD TO MOVE &bull; RELEASE TO STOP</div>"));
+  client.println(F("</div>"));
+
+  // ── TAB: LOGS ────────────────────────────────────────────────────────────────
+  client.println(F("<div class='tab' id='tab-logs'>"));
+  client.println(F("  <div class='section-title'>SESSION LOG</div>"));
+  client.println(F("  <div class='log-list' id='log-list'></div>"));
+  client.println(F("  <button class='log-clear' onclick='clearLog()'>CLEAR LOG</button>"));
+  client.println(F("</div>"));
+
+  // ── TAB: ENVIRONMENT ─────────────────────────────────────────────────────────
+  client.println(F("<div class='tab' id='tab-env'>"));
+  client.println(F("  <div class='section-title'>OCEAN CONDITIONS &amp; SARGASSUM</div>"));
+  client.println(F("  <div class='env-loc' id='env-loc'>&#9655; RIVIERA MAYA, MX &nbsp;(20.7&deg;N 87.1&deg;W)</div>"));
+  client.println(F("  <div class='sarg-banner'>"));
+  client.println(F("    <div class='sarg-title'>SARGASSUM RISK INDEX</div>"));
+  client.println(F("    <div class='sarg-status' id='sarg-status'>LOADING&hellip;</div>"));
+  client.println(F("    <div class='sarg-note' id='sarg-note'>&nbsp;</div>"));
+  client.println(F("  </div>"));
+  client.println(F("  <div class='env-grid'>"));
+  client.println(F("    <div class='env-card'><div class='env-label'>WAVE HEIGHT</div><div class='env-val' id='ev-wh'>&mdash;</div><div class='env-unit'>METRES</div></div>"));
+  client.println(F("    <div class='env-card'><div class='env-label'>WAVE PERIOD</div><div class='env-val' id='ev-wp'>&mdash;</div><div class='env-unit'>SECONDS</div></div>"));
+  client.println(F("    <div class='env-card'><div class='env-label'>SEA SURFACE TEMP</div><div class='env-val' id='ev-sst'>&mdash;</div><div class='env-unit'>&deg;C</div></div>"));
+  client.println(F("    <div class='env-card'><div class='env-label'>WIND SPEED</div><div class='env-val' id='ev-ws'>&mdash;</div><div class='env-unit'>KM/H</div></div>"));
+  client.println(F("  </div>"));
+  client.println(F("  <div class='env-src'>DATA: <a href='https://open-meteo.com' target='_blank'>OPEN-METEO MARINE API</a>"));
+  client.println(F("  &bull; SARGASSUM: <a href='https://optics.marine.usf.edu/projects/SaWS.html' target='_blank'>USF SaWS</a></div>"));
+  client.println(F("</div>"));
+
+  // ── JAVASCRIPT ───────────────────────────────────────────────────────────────
+  client.println(F("<script>"));
+
+  // Tab switching
+  client.println(F("function showTab(id,btn){"));
+  client.println(F("  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('show'));"));
+  client.println(F("  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));"));
+  client.println(F("  document.getElementById('tab-'+id).classList.add('show');"));
+  client.println(F("  btn.classList.add('active');"));
+  client.println(F("  if(id==='env'&&!envLoaded)loadEnv();"));
+  client.println(F("}"));
+
+  // Motor constants
+  client.println(F("const FWD=1750,BWD=1250,NEU=1500;"));
+  client.println(F("let keys={},slR=NEU,slL=NEU;"));
+  client.println(F("const BM={'ArrowUp':'bu','ArrowDown':'bd','ArrowLeft':'bl','ArrowRight':'br'};"));
+
+  // Key handlers
+  client.println(F("function pk(k){keys[k]=true;calc();}"));
+  client.println(F("function rk(k){keys[k]=false;calc();}"));
+  client.println(F("function evt(e,k,down){e.preventDefault();down?pk(k):rk(k);}"));
+  client.println(F("document.addEventListener('keydown',e=>{const k=e.key;if(!BM[k])return;e.preventDefault();if(keys[k])return;keys[k]=true;document.getElementById(BM[k]).classList.add('on');calc();});"));
+  client.println(F("document.addEventListener('keyup',e=>{const k=e.key;if(!BM[k])return;keys[k]=false;document.getElementById(BM[k]).classList.remove('on');calc();});"));
+
+  // Motor calc
+  client.println(F("function calc(){let R=NEU,L=NEU;const u=keys['ArrowUp'],d=keys['ArrowDown'],l=keys['ArrowLeft'],r=keys['ArrowRight'];"));
+  client.println(F("if(u&&l){R=FWD;L=NEU;}else if(u&&r){R=NEU;L=FWD;}else if(d&&l){R=BWD;L=NEU;}else if(d&&r){R=NEU;L=BWD;}"));
+  client.println(F("else if(u){R=FWD;L=FWD;}else if(d){R=BWD;L=BWD;}else if(l){R=FWD;L=BWD;}else if(r){R=BWD;L=FWD;}"));
+  client.println(F("send(R,L);}"));
+
+  // Slider
+  client.println(F("function onSlide(side,v){v=parseInt(v);if(side==='R'){slR=v;document.getElementById('srV').textContent=v;}else{slL=v;document.getElementById('slV').textContent=v;}send(slR,slL);}"));
+
+  // Send command + update UI
+  client.println(F("function send(R,L){"));
+  client.println(F("  document.getElementById('rv').textContent=R;"));
+  client.println(F("  document.getElementById('lv').textContent=L;"));
+  client.println(F("  const sv=document.getElementById('sv');sv.className='stat-v';"));
+  client.println(F("  let state;"));
+  client.println(F("  if(R===NEU&&L===NEU){state='IDLE';sv.classList.add('idle');}"));
+  client.println(F("  else if(R>NEU&&L>NEU){state='FWD';sv.classList.add('fwd');}"));
+  client.println(F("  else if(R<NEU&&L<NEU){state='BWD';sv.classList.add('bwd');}"));
+  client.println(F("  else{state='TURN';sv.classList.add('turn');}"));
+  client.println(F("  sv.textContent=state;"));
+  client.println(F("  if(state!=='IDLE')addLog('cmd','CMD '+state+' R:'+R+' L:'+L);"));
+  client.println(F("  fetch('/cmd?R='+R+'&L='+L).catch(()=>{});"));
+  client.println(F("}"));
+
+  // Emergency stop
+  client.println(F("function eStop(){keys={};slR=NEU;slL=NEU;"));
+  client.println(F("  Object.values(BM).forEach(id=>document.getElementById(id).classList.remove('on'));"));
+  client.println(F("  document.getElementById('slR').value=NEU;document.getElementById('slL').value=NEU;"));
+  client.println(F("  send(NEU,NEU);fetch('/stop').catch(()=>{});"));
+  client.println(F("  addLog('stop','EMERGENCY STOP TRIGGERED');"));
+  client.println(F("}"));
+
+  // ── CONNECTION HEARTBEAT ─────────────────────────────────────────────────────
+  client.println(F("let online=false;"));
+  client.println(F("function checkConn(){"));
+  client.println(F("  fetch('/ping',{signal:AbortSignal.timeout(2500)})"));
+  client.println(F("  .then(()=>{if(!online){online=true;setConn(true);}})"));
+  client.println(F("  .catch(()=>{if(online){online=false;setConn(false);}});"));
+  client.println(F("}"));
+  client.println(F("function setConn(up){"));
+  client.println(F("  const dot=document.getElementById('dot'),lbl=document.getElementById('conn-lbl');"));
+  client.println(F("  dot.className='dot '+(up?'online':'offline');"));
+  client.println(F("  lbl.textContent=up?'CONNECTED':'OFFLINE';"));
+  client.println(F("  addLog(up?'conn':'disc',up?'ROV CONNECTED':'ROV OFFLINE');"));
+  client.println(F("}"));
+  client.println(F("checkConn();setInterval(checkConn,3000);"));
+
+  // ── BATTERY POLL ─────────────────────────────────────────────────────────────
+  client.println(F("function pollBatt(){"));
+  client.println(F("  fetch('/status').then(r=>r.json()).then(d=>{"));
+  client.println(F("    const v=d.battV,el=document.getElementById('batt');"));
+  client.println(F("    el.textContent='BATT '+v.toFixed(1)+'V';"));
+  client.println(F("    el.className='batt'+(v<10.5?' low':v<11.5?' mid':'');"));
+  client.println(F("  }).catch(()=>{});"));
+  client.println(F("}"));
+  client.println(F("pollBatt();setInterval(pollBatt,5000);"));
+
+  // ── LOG SYSTEM ───────────────────────────────────────────────────────────────
+  client.println(F("const logs=[];"));
+  client.println(F("function addLog(type,msg){"));
+  client.println(F("  const now=new Date();"));
+  client.println(F("  const ts=now.toTimeString().slice(0,8);"));
+  client.println(F("  logs.unshift({ts,type,msg});"));
+  client.println(F("  if(logs.length>100)logs.pop();"));
+  client.println(F("  renderLog();"));
+  client.println(F("}"));
+  client.println(F("function renderLog(){"));
+  client.println(F("  const el=document.getElementById('log-list');"));
+  client.println(F("  el.innerHTML=logs.map(l=>`<div class='log-entry'><span class='log-time'>${l.ts}</span><span class='log-msg ${l.type}'>${l.msg}</span></div>`).join('');"));
+  client.println(F("}"));
+  client.println(F("function clearLog(){logs.length=0;renderLog();}"));
+
+  // ── ENVIRONMENT / SARGASSUM ──────────────────────────────────────────────────
+  client.println(F("let envLoaded=false;"));
+  client.println(F("function loadEnv(){"));
+  client.println(F("  envLoaded=true;"));
+  // Open-Meteo Marine API — Riviera Maya coordinates
+  client.println(F("  const url='https://marine-api.open-meteo.com/v1/marine?latitude=20.7&longitude=-87.1&current=wave_height,wave_period,sea_surface_temperature,wind_speed_10m&wind_speed_unit=kmh';"));
+  client.println(F("  fetch(url).then(r=>r.json()).then(d=>{"));
+  client.println(F("    const c=d.current;"));
+  client.println(F("    set('ev-wh',c.wave_height!=null?c.wave_height.toFixed(2):'N/A');"));
+  client.println(F("    set('ev-wp',c.wave_period!=null?c.wave_period.toFixed(1):'N/A');"));
+  client.println(F("    set('ev-sst',c.sea_surface_temperature!=null?c.sea_surface_temperature.toFixed(1):'N/A');"));
+  client.println(F("    set('ev-ws',c.wind_speed_10m!=null?c.wind_speed_10m.toFixed(1):'N/A');"));
+  // Sargassum risk heuristic:
+  // High risk: SST >= 27°C (warm water promotes growth) AND wave height < 0.8m (calm = accumulation)
+  // Moderate: SST >= 25°C OR wave height < 1.0m
+  // Low: otherwise
+  client.println(F("    const sst=c.sea_surface_temperature,wh=c.wave_height;"));
+  client.println(F("    const el=document.getElementById('sarg-status'),note=document.getElementById('sarg-note');"));
+  client.println(F("    if(sst>=27&&wh<0.8){el.className='sarg-status high';el.textContent='HIGH RISK';"));
+  client.println(F("      note.textContent='Warm, calm conditions favor sargassum accumulation. Check beach reports before deployment.';}"));
+  client.println(F("    else if(sst>=25||wh<1.0){el.className='sarg-status mod';el.textContent='MODERATE RISK';"));
+  client.println(F("      note.textContent='Conditions may allow sargassum presence. Monitor local reports.';}"));
+  client.println(F("    else{el.className='sarg-status low';el.textContent='LOW RISK';"));
+  client.println(F("      note.textContent='Current conditions are unfavorable for sargassum accumulation.';}"));
+  client.println(F("  }).catch(()=>{"));
+  client.println(F("    document.getElementById('sarg-status').textContent='UNAVAILABLE';"));
+  client.println(F("    document.getElementById('sarg-note').textContent='Could not reach marine API. Check internet connection.';"));
+  client.println(F("  });"));
+  client.println(F("}"));
+  client.println(F("function set(id,v){document.getElementById(id).textContent=v;}"));
+  client.println(F("</script></body></html>"));
+
+  client.stop();
+}
