@@ -1,0 +1,110 @@
+# 🤖 Kaax — Raspberry Pi ROV Controller
+
+**Kaax** is a single-process Python web application that turns a Raspberry Pi 5 into a fully self-contained ROV controller.
+
+---
+
+## 🌐 Connectivity
+
+* Broadcasts its own Wi-Fi access point (**"Kaax"**)
+* Direct laptop connection — no external infrastructure required
+
+---
+
+## 🖥️ Web Interface
+
+* Flask server running on **port 80**
+* Login-protected pages for:
+
+  * Tele-operation
+  * Session logs
+  * Analytics
+
+---
+
+## ⚙️ Hardware Control
+
+* Uses `lgpio` for hardware PWM:
+
+  * **BCM 18/19** → ESCs (`tx_pwm` duty cycle)
+  * **BCM 12/13** → Servos (`tx_servo`, microsecond pulses)
+
+---
+
+## 🎥 Computer Vision
+
+* Camera feed
+* Processing pipeline:
+
+  * 180° rotation
+  * HSV color thresholding
+
+    * 🟠 Sargassum (orange)
+    * 🟢 Vegetation (green)
+* Output streamed as **MJPEG**
+
+---
+
+## 🧭 Sensors & Telemetry
+
+* MPU-9250 IMU over I²C
+* Data exposed to browser:
+
+  * Roll / Pitch / Yaw
+  * Raw 9-axis data
+* Frontend renders:
+
+  * Artificial horizon
+  * Compass
+
+---
+
+## 🎮 Control System
+
+* Browser sends HTTP POST requests to `/api/cmd`
+* Triggered by key / joystick input
+* **400 ms watchdog feeder** ensures smooth motor operation
+* **1-second server watchdog** cuts thrusters on signal loss
+
+---
+
+## 🗄️ Data & Analytics
+
+* SQLite database stores:
+
+  * Users
+  * Event logs
+  * Sessions
+  * Telemetry (every 2 seconds)
+
+* Analytics:
+
+  * SQL `GROUP BY` aggregation
+  * Session reports via:
+
+    ```
+    /api/session/<id>/report.pdf
+    ```
+  * Generated with ReportLab:
+
+    * Metrics table
+    * Sargassum-over-time chart
+
+---
+
+## 🚀 Deployment
+
+* Auto-starts on boot via `systemd`
+* Startup workflow:
+
+  1. Power on Raspberry Pi
+  2. Connect to **"Kaax" Wi-Fi**
+  3. Open browser and drive
+
+---
+
+## 🧠 Summary
+
+Kaax integrates networking, control systems, computer vision, and telemetry into a single deployable robotics platform—optimized for reliability and field use.
+
+---
