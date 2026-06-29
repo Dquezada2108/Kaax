@@ -22,7 +22,7 @@ This is a project I am passionate about that incorporates a central claw that us
 | **Total** | | | | **$675.40** | |
 
 
-#PCB
+# PCB
 Here is the schematic of the pcb as well as some images of the design and how it should look. Keep in mind it only uses male and female connectors to lower the manufacturing costs.
 
 <img width="1238" height="722" alt="Screenshot 2026-06-25 at 11 01 11 a m" src="https://github.com/user-attachments/assets/bb845973-769f-453c-9f3e-412375176f9d" />
