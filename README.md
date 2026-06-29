@@ -20,3 +20,15 @@ This is a project I am passionate about that incorporates a central claw that us
 | Apisqueen U5 thruster | Propulsion | 2 | $99.69 | $199.38 | [Amazon](https://www.amazon.com/-/es/Subacu%C3%A1tico-ESC-Bidireccional-100A-CCW/dp/B0D69YX31K) |
 | Raspberry Pi 5 (16 GB) | Main computer | 1 | $339.99 | $339.99 | [Amazon](https://www.amazon.com/s?k=raspberry+pi+5+16+GB+ram) |
 | **Total** | | | | **$675.40** | |
+
+
+#PCB
+Here is the schematic of the pcb as well as some images of the design and how it should look. Keep in mind it only uses male and female connectors to lower the manufacturing costs.
+
+<img width="1238" height="722" alt="Screenshot 2026-06-25 at 11 01 11 a m" src="https://github.com/user-attachments/assets/bb845973-769f-453c-9f3e-412375176f9d" />
+
+<img width="725" height="344" alt="Captura de pantalla 2026-06-28 180409" src="https://github.com/user-attachments/assets/c15ba1aa-ca2d-46ae-8f85-668bc6aa644b" />
+
+
+
+
