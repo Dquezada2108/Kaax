@@ -1,5 +1,5 @@
-# Yum-Kaaxa
-Hi there! Here you may find the CAD files, code and other resources that we have developed to create Yum Kaaxa, our robot desegned to remove sargasso off the coast of the Mexican Caribean. Feel free to explore and discover what we have created.
+# Kaax
+Hi there! Here you may find the CAD files, code and other resources that we have developed to create Kaax, our robot desegned to remove sargasso off the coast of the Mexican Caribean. Feel free to explore and discover what we have created.
 
 This is a project I am passionate about that incorporates a central claw that uses servos to remove sargasso from the water. It is destined to cleaning the sea. We were inspired by the huge amount of this seaweed that constalty arrives to our beaches in the Mexican Caribbean. We had the knowledge necessary to pull this project off. And also, this can be the base for a diiversity of other acquatic projects like a rescue bot and an oil spill cleaner. This is the future and we as citizens have the responsability to do something, our part, to solve the problems we encounter. Many times while being on vacation sargasso ended up ruining the experience, and I could see how many people spent a lot of time and effort removing it, long hours under the sun.
 
