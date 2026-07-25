@@ -3,8 +3,16 @@ Hi there! Here you may find the CAD files, code and other resources that we have
 
 This is a project I am passionate about that incorporates a central claw that uses servos to remove sargasso from the water. It is destined to cleaning the sea. We were inspired by the huge amount of this seaweed that constalty arrives to our beaches in the Mexican Caribbean. We had the knowledge necessary to pull this project off. And also, this can be the base for a diiversity of other acquatic projects like a rescue bot and an oil spill cleaner. This is the future and we as citizens have the responsability to do something, our part, to solve the problems we encounter. Many times while being on vacation sargasso ended up ruining the experience, and I could see how many people spent a lot of time and effort removing it, long hours under the sun.
 
-# 3D Model
+# 3D Model V1
 <img width="1620" height="1068" alt="Screenshot 2026-05-05 at 11 41 06 a m" src="https://github.com/user-attachments/assets/80ad21f0-05d1-4d38-8104-56a2a722c4b4" />
+
+# 3D Model V2
+<img width="818" height="504" alt="image" src="https://github.com/user-attachments/assets/b588edb5-8f24-491e-a428-6405990baa29" />
+
+# 3D Model V3
+<img width="726" height="449" alt="image" src="https://github.com/user-attachments/assets/cc367db7-8f6d-4ac1-be13-58f5e93f4aa7" />
+
+
 
 # Wiring
 <img width="1516" height="1130" alt="Screenshot 2026-05-05 at 11 47 09 a m" src="https://github.com/user-attachments/assets/5d8778f6-b502-4f6e-9743-9831dabb5c83" />
